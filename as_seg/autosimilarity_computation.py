@@ -6,7 +6,7 @@ Created on Mon Mar 14 16:30:31 2022
 """
 
 import numpy as np
-import seg_as.model.errors as err
+import as_seg.model.errors as err
 import sklearn.metrics.pairwise as pairwise_distances
 import warnings
 

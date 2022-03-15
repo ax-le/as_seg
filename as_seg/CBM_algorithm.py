@@ -18,7 +18,7 @@ from scipy.sparse import diags
 import as_seg.model.errors as err
 import warnings
 
-def dynamic_convolution_computation(autosimilarity, min_size = 1, max_size = 36, penalty_weight = 1, penalty_func = "modulo8", convolution_type = "mixed"):
+def compute_cbm(autosimilarity, min_size = 1, max_size = 36, penalty_weight = 1, penalty_func = "modulo8", convolution_type = "mixed"):
     """
     Dynamic programming algorithm, computing a maximization of a cost, sum of segments' costs on the autosimilarity.
     This cost is a combination of

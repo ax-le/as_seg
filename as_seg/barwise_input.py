@@ -7,7 +7,6 @@ Created on Wed Apr 14 18:34:29 2021
 
 import numpy as np
 import as_seg.data_manipulation as dm
-import as_seg.autosimilarity_segmentation as as_seg
 import as_seg.model.errors as err
 import tensorly as tl
 
