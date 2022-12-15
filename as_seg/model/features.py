@@ -3,6 +3,15 @@
 Created on Wed Mar 25 16:54:59 2020
 
 @author: amarmore
+
+Computing spectrogram in different feature description.
+
+Note that Mel (and variants of Mel) spectrograms are denoted "mel_grill", 
+as they follow the particular definition of [1].
+
+[1] Grill, T., & Schlüter, J. (2015, October). 
+Music Boundary Detection Using Neural Networks on Combined Features and Two-Level Annotations. 
+In ISMIR (pp. 531-537).
 """
 
 import numpy as np
@@ -197,6 +206,27 @@ def get_spectrogram(signal, sr, feature, hop_length, n_fft = 2048, fmin = 98, n_
         raise err.InvalidArgumentValueException(f"Unknown signal representation: {feature}.")
 
 def get_log_mel_from_mel(mel_spectrogram, feature):
+    """
+    Computes a variant of a Mel spectrogram (typically Log Mel).
+
+    Parameters
+    ----------
+    mel_spectrogram : numpy array
+        Mel spectrogram of the signal.
+    feature : string
+        Desired feature name (must be a variant of a Mel spectrogram).
+
+    Raises
+    ------
+    err.InvalidArgumentValueException
+        Raised in case of unknown feature name.
+
+    Returns
+    -------
+    numpy array
+        Variant of the Mel spectrogram of the signal.
+
+    """
     if feature == "log_mel_grill":
         return librosa.power_to_db(np.abs(mel_spectrogram))
     
@@ -214,9 +244,36 @@ def get_log_mel_from_mel(mel_spectrogram, feature):
     elif feature == "mel" or feature == "log_mel":
         raise err.InvalidArgumentValueException("Invalid mel parameter, are't you looking for mel_grill?")
     else:
-        raise err.InvalidArgumentValueException("Unknown signal representation.")
+        raise err.InvalidArgumentValueException("Unknown feature representation.")
         
 def get_audio_from_spectrogram(spectrogram, feature, hop_length, sr):
+    """
+    Computes an audio signal for a COMPLEX-valued spectrogram.
+
+    Parameters
+    ----------
+    spectrogram : numpy array
+        Complex-valued spectrogram.
+    feature : string
+        Name of the particular feature used for representing the signal in a spectrogram.
+    hop_length : int
+        Hop length of the spectrogram
+        (Or similar value for the reconstruction to make sense).
+    sr : inteer
+        Sampling rate of the signal, when processed into a spectrogram
+        (Or similar value for the reconstruction to make sense).
+
+    Raises
+    ------
+    InvalidArgumentValueException
+        In case of an unknown feature representation.
+
+    Returns
+    -------
+    ipd.Audio
+        Audio signal of the spectrogram.
+
+    """
     if feature == "stft":
         audio = librosa.griffinlim(spectrogram, hop_length = hop_length)
         return ipd.Audio(audio, rate=sr)
@@ -227,5 +284,5 @@ def get_audio_from_spectrogram(spectrogram, feature, hop_length, sr):
         mel = librosa.db_to_power(spectrogram) - np.ones(spectrogram.shape)
         return get_audio_from_spectrogram(mel, "mel_grill", hop_length, sr)
     else:
-        raise NotImplementedError(f"Can't inverse this signal representation: {feature}")
+        raise err.InvalidArgumentValueException("Unknown feature representation, can't reconstruct a signal.")
     

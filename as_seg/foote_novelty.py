@@ -1,11 +1,27 @@
 # -*- coding: utf-8 -*-
 """
 Created on Mon Mar 14 16:40:07 2022
-Novelty cost, deprecated, but could be used in comparison tests.
 
 @author: amarmore
+
+Novelty cost, adapted from the work of Foote, see [1].
+The kernel is of binary values : 1 and -1.
+This code is deprecated, but could be used in comparison tests.
+
+If interested, one should use the novelty version from the toolbox MSAF [2] instead,
+whose parameters were tested and optimized.
+
+References
+----------
+[1] J. Foote, "Automatic audio segmentation using a measure of audio novelty",
+in: 2000 IEEE Int. Conf. Multimedia and Expo. ICME2000. Proc. Latest Advances 
+in the Fast Changing World of Multimedia, vol. 1, IEEE, 2000,pp. 452–455.
+
+[2] O. Nieto and J.P. Bello, "Systematic exploration of computational music
+structure research.", in: ISMIR, 2016, pp. 547–553.
 """
 
+# %% Novelty computation
 def novelty_cost(cropped_autosimilarity):
     """
     Novelty measure on this part of the autosimilarity matrix.
@@ -32,7 +48,7 @@ def novelty_cost(cropped_autosimilarity):
         return 0
     
     if len(cropped_autosimilarity) % 2 == 1:
-        raise NotImplementedError("Error")
+        raise NotImplementedError("The novelty computation is not implemented when the kernel is of odd size.") from None
         #return (novelty_cost(cropped_autosimilarity[:-1, :-1]) + novelty_cost(cropped_autosimilarity[1:, 1:])) / 2
     
     kernel_size = int(len(cropped_autosimilarity) / 2)
@@ -41,7 +57,7 @@ def novelty_cost(cropped_autosimilarity):
 
 def novelty_computation(autosimilarity_array, kernel_size):
     """
-    Computes the novelty measure of all of the autosimilarity matrix, with a defined and fixed kernel size.
+    Computes the novelty measure on the entire autosimilarity matrix, with a defined and fixed kernel size.
 
     Parameters
     ----------
@@ -63,19 +79,20 @@ def novelty_computation(autosimilarity_array, kernel_size):
 
     """
     if kernel_size % 2 == 1:
-        raise NotImplementedError("The kernel should be even.") from None
+        raise NotImplementedError("The novelty computation is not implemented when the kernel is of odd size.") from None
     cost = np.zeros(len(autosimilarity_array))
     half_kernel = int(kernel_size / 2)
     for i in range(half_kernel, len(autosimilarity_array) - half_kernel):
         cost[i] = novelty_cost(autosimilarity_array[i - half_kernel:i + half_kernel,i - half_kernel:i + half_kernel])
     return cost
 
-# %% Related to the novelty computation, so deprecated.
+# %% Post-processing of the novelty values
+##################### Sandbox ##################
 def peak_picking(tab, window_size = 1):
     """
     Returns the indexes of peaks of values in the given list of values.
     A value is considered "peak" if it's a local maximum,
-    and if all values in the window (defined by 'window_size) before and after 
+    and if all values in the window (defined by 'window_size') before and after 
     are strictly monotonous.    
     Used for peak picking in the novelty measure.
 
@@ -104,7 +121,7 @@ def valley_picking(tab, window_size = 1):
     """
     Returns the indexes of valleys of values in the desired list of values.
     A value is considered "valley" if it's a local minimum,
-    and if all values in the window (defined by 'window_size) before and after 
+    and if all values in the window (defined by 'window_size') before and after 
     are strictly monotonous.
     Used for peak picking in the novelty measure.
 
@@ -199,25 +216,6 @@ def select_highest_peaks_thresholded_indexes(data, percentage = 0.33):
             return [int(i) for i in sorted(peaks[:idx, 0])]
     return [int(i) for i in sorted(peaks[:,0])]
 
-def mean(val_a, val_b):
-    """
-    A function returning the mean of both values.
-    This function is redeveloped so as to be called as choice_func in the function "values_as_slop()" (see below) in external projects.
-
-    Parameters
-    ----------
-    val_a : float
-        First value.
-    val_b : float
-        Second value.
-
-    Returns
-    -------
-    float: mean of both values.
-
-    """
-    return (val_a + val_b) / 2
-
 def values_as_slop(value, choice_func = max):
     """
     Compute peaks of a value (typically novelty measure)
@@ -237,7 +235,7 @@ def values_as_slop(value, choice_func = max):
     choice_func : function name, optional
         Type of the function selecting the difference between peaks and valleys.
         Classical values are "max" for selecting the maximum gap between the peak and both its closest valleys,
-        "min" for the minimum of both gaps, and "mean" (called autosimilarity_segmentation.mean) for the mean of both gaps.
+        "min" for the minimum of both gaps, and "mean" (called as_seg.mean) for the mean of both gaps.
         The default is max.
 
     Returns
@@ -266,3 +264,21 @@ def values_as_slop(value, choice_func = max):
         peak_valley_slop[peak] = value[peak] - chosen_valley_value
     return peak_valley_slop
     
+def mean(val_a, val_b):
+    """
+    A function returning the mean of both values.
+    This function is redeveloped so as to be called as choice_func in the function "values_as_slop()" (see above) in external projects.
+
+    Parameters
+    ----------
+    val_a : float
+        First value.
+    val_b : float
+        Second value.
+
+    Returns
+    -------
+    float: mean of both values.
+
+    """
+    return (val_a + val_b) / 2

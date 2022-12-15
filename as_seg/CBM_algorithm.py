@@ -2,35 +2,46 @@
 """
 Created on Mon Feb 24 11:01:42 2020
 
-Convolutive "Block-Matching" (CBM) algorithm.
-This algorithm is desgiend to segment barwise autosimilarities.
-See [1,2] for more details.
-
-[1] Marmoret, A., Cohen, J., Bertin, N., & Bimbot, F. Uncovering Audio Patterns in Music with Nonnegative Tucker Decomposition for Structural Segmentation. In 2020 ISMIR.
-[2] Marmoret, A., Cohen, J. E., & Bimbot, F. Barwise Compression Schemes for Audio-Based Music Structure Analysis. 2022 arXiv preprint arXiv:2202.04981.
-
 @author: amarmore
+
+Convolutive "Block-Matching" (CBM) algorithm.
+This algorithm is designed to segment barwise autosimilarities.
+
+In short, this algorithm focuses on the criteria of homogeneity to estimate segments, 
+and computes an optimal segmentation via dynamic programming.
+
+See [1] for more details.
+
+References
+----------
+[1] Marmoret, A., Cohen, J. E., & Bimbot, F., "Convolutive Block-Matching Segmentation Algorithm with Application to Music Structure Analysis", 2022, arXiv preprint arXiv:2210.15356.
 """
 
-import numpy as np
-import math
-from scipy.sparse import diags
 import as_seg.model.errors as err
+
+import math
+import numpy as np
+from scipy.sparse import diags
 import warnings
 
-def compute_cbm(autosimilarity, min_size = 1, max_size = 36, penalty_weight = 1, penalty_func = "modulo8", convolution_type = "mixed"):
+def compute_cbm(autosimilarity, min_size = 1, max_size = 32, penalty_weight = 1, penalty_func = "modulo8", bands_number = None):
     """
-    Dynamic programming algorithm, computing a maximization of a cost, sum of segments' costs on the autosimilarity.
-    This cost is a combination of
-     - the convolutionnal cost on the segment, with a dynamic size, 
+    Dynamic programming algorithm, maximizing an overall score at the song scale, sum of all segments' scores on the autosimilarity.
+    Each segment' score is a combination of
+     - the convolution score on this the segment, dependong on the kernel, 
      - a penalty cost, function of the size of the segment, to enforce specific sizes (with prior knowledge),
 
     The penalty cost is computed in the function "penalty_cost_from_arg()".
     See this function for further details.
 
-    It returns the optimal segmentation according to this cost.
+    It returns the optimal segmentation according to this score.
     
-    This algortihm is also desribed in [1].
+    This algortihm is also described in [1].
+    
+    IDEAS FOR FUTURE DEVELOPMENT: 
+        - May be optimized using scipy.signal.fftconvolve(), but requires a different approach in parsing all segments.
+    (i.e. parsing all possible segments for a specified kernel size and then retrieve the indexes of the diagonally-centered values)
+        - Taking into account values which are not around the diagonal but everywhere in the matrix in order to account for the repetition principle.
 
     Parameters
     ----------
@@ -41,15 +52,18 @@ def compute_cbm(autosimilarity, min_size = 1, max_size = 36, penalty_weight = 1,
         The default is 1.
     max_size : integer, optional
         The maximal length of segments.
-        The default is 36.
+        The default is 32.
     penalty_weight : float, optional
         The ponderation parameter for the penalty function
     penalty_func : string
         The type of penalty function to use.
         See "penalty_cost_from_arg()" for further details.
-    convolution_type : string
-        The type of convolution we want to use in this computation.
-        See "compute_all_kernels()" for a detailed list of possibilities.
+    bands_number : positive integer or None, optional
+        The number of bands in the kernel. 
+        For the full kernel, bands_number must be set to None
+        (or higher than the maximal size, but cumbersome)
+        See [1] for details. 
+        The default is None.
 
     Raises
     ------
@@ -61,26 +75,19 @@ def compute_cbm(autosimilarity, min_size = 1, max_size = 36, penalty_weight = 1,
     list of tuples
         The segments, as a list of tuples (start, end).
     integer
-        Global cost (the minimal among all).
-        
-    References
-    ----------
-    [1] Marmoret, A., Cohen, J., Bertin, N., & Bimbot, F. (2020, October). 
-    Uncovering Audio Patterns in Music with Nonnegative Tucker Decomposition for Structural Segmentation. 
-    In ISMIR 2020-21st International Society for Music Information Retrieval.
-
+        Global cost (the maximum among all).
     """
-    costs = [-math.inf for i in range(len(autosimilarity))]
+    scores = [-math.inf for i in range(len(autosimilarity))]
     segments_best_starts = [None for i in range(len(autosimilarity))]
     segments_best_starts[0] = 0
-    costs[0] = 0
-    kernels = compute_all_kernels(max_size, convolution_type = convolution_type)
-    conv_eight = convolution_entire_matrix_computation(autosimilarity, kernels)
+    scores[0] = 0
+    kernels = compute_all_kernels(max_size, bands_number = bands_number)
+    max_conv_eight = np.amax(convolution_entire_matrix_computation(autosimilarity, kernels))
     
     for current_idx in range(1, len(autosimilarity)): # Parse all indexes of the autosimilarity
         for possible_start_idx in possible_segment_start(current_idx, min_size = min_size, max_size = max_size):
             if possible_start_idx < 0:
-                raise err.ToDebugException("Invalid value of start index.")
+                raise err.ToDebugException("Invalid value of start index, shouldn't happen.") from None
                 
             # Convolutionnal cost between the possible start of the segment and the current index (entire segment)
             conv_cost = convolutionnal_cost(autosimilarity[possible_start_idx:current_idx,possible_start_idx:current_idx], kernels)
@@ -88,16 +95,16 @@ def compute_cbm(autosimilarity, min_size = 1, max_size = 36, penalty_weight = 1,
             segment_length = current_idx - possible_start_idx
             penalty_cost = penalty_cost_from_arg(penalty_func, segment_length)            
             
-            this_segment_cost = conv_cost * segment_length - penalty_cost * penalty_weight * np.max(conv_eight)
+            this_segment_cost = conv_cost * segment_length - penalty_cost * penalty_weight * max_conv_eight
             # Note: conv_eight is not normalized by its size (not a problem in itself as size is contant, but generally not specified in formulas).
 
-            if possible_start_idx == 0: # Avoiding errors, as costs values are initially set to -inf.
-                if this_segment_cost > costs[current_idx]:
-                    costs[current_idx] = this_segment_cost
+            if possible_start_idx == 0: # Avoiding errors, as scores values are initially set to -inf.
+                if this_segment_cost > scores[current_idx]: # This segment is of larger score
+                    scores[current_idx] = this_segment_cost
                     segments_best_starts[current_idx] = 0
             else:
-                if costs[possible_start_idx] + this_segment_cost > costs[current_idx]:
-                    costs[current_idx] = costs[possible_start_idx] + this_segment_cost
+                if scores[possible_start_idx] + this_segment_cost > scores[current_idx]: # This segment is of larger score
+                    scores[current_idx] = scores[possible_start_idx] + this_segment_cost
                     segments_best_starts[current_idx] = possible_start_idx
 
     segments = [(segments_best_starts[len(autosimilarity) - 1], len(autosimilarity) - 1)]
@@ -107,11 +114,11 @@ def compute_cbm(autosimilarity, min_size = 1, max_size = 36, penalty_weight = 1,
         precedent_frontier = segments_best_starts[precedent_frontier]
         if precedent_frontier == None:
             raise err.ToDebugException("Well... The dynamic programming algorithm took an impossible path, so it failed. Understand why.") from None
-    return segments[::-1], costs[-1]
+    return segments[::-1], scores[-1]
 
-def compute_all_kernels(max_size, convolution_type = "full"):
+def compute_all_kernels(max_size, bands_number = None):
     """
-    Precomputes all kernels of size 0 ([0]) to max_size, and feed them to the Dynamic Progamming algorithm.
+    Precomputes all kernels of size 0 ([0]) to max_size, to be reused in the CBM algorithm.
     
     This is used for acceleration purposes.
 
@@ -119,23 +126,12 @@ def compute_all_kernels(max_size, convolution_type = "full"):
     ----------
     max_size : integer
         The maximal size (included) for kernels.
-    convolution_type: string
-        The type of convolution. (to explicit)
-        Possibilities are :
-            - "full" : squared matrix entirely composed of one, except on the diagonal where it's zero.
-            The associated convolution cost for a segment (b_1, b_2) will be
-            .. math::
-                c_{b_1,b_2} = \\frac{1}{b_2 - b_1 + 1}\\sum_{i,j = 0, i \\ne j}^{n - 1}  a_{i + b_1, j + b_1}
-            - "eight_bands" : squared matrix where the only nonzero values are ones on the 
-            8 subdiagonals surrounding the main diagonal.
-            The associated convolution cost for a segment (b_1, b_2) will be
-            .. math::
-                c_{b_1,b_2} = \\frac{1}{b_2 - b_1 + 1}\\sum_{i,j = 0, 1 \\leq |i - j| \\leq 4}^{n - 1}  a_{i + b_1, j + b_1}
-            - "mixed" : sum of both previous kernels, i.e. values are zero on the diagonal,
-            2 on the 8 subdiagonals surrounding the main diagonal, and 1 elsewhere.
-            The associated convolution cost for a segment (b_1, b_2) will be
-            .. math::
-                c_{b_1,b_2} = \\frac{1}{b_2 - b_1 + 1}(2*\\sum_{i,j = 0, 1 \\leq |i - j| \\leq 4}^{n - 1}  a_{i + b_1, j + b_1} \\ + \sum_{i,j = 0, |i - j| > 4}^{n - 1}  a_{i + b_1, j + b_1})
+    bands_number : positive integer or None, optional
+        The number of bands in the kernel. 
+        For the full kernel, bands_number must be set to None
+        (or higher than the maximal size, but cumbersome)
+        See [1] for details. 
+        The default is None.
         
     Returns
     -------
@@ -145,24 +141,12 @@ def compute_all_kernels(max_size, convolution_type = "full"):
     """
     kernels = [[0]]
     for p in range(1,max_size + 1):
-        if p < 4:
+        if bands_number is None or p < bands_number:
             kern = np.ones((p,p)) - np.identity(p)
         else:
-            if convolution_type == "full":
-                # Full kernel (except for the diagonal)
-                kern = np.ones((p,p)) - np.identity(p)
-            elif convolution_type == "eight_bands":
-                # Diagonal where only the eight subdiagonals surrounding the main diagonal is one
-                k = np.array([np.ones(p-4),np.ones(p-3),np.ones(p-2),np.ones(p-1),np.zeros(p),np.ones(p-1),np.ones(p-2),np.ones(p-3),np.ones(p-4)])
-                offset = [-4,-3,-2,-1,0,1,2,3,4]
-                kern = diags(k,offset).toarray()
-            elif convolution_type == "mixed":
-                # Sum of both previous kernels
-                k = np.array([np.ones(p-4),np.ones(p-3),np.ones(p-2),np.ones(p-1),np.zeros(p),np.ones(p-1),np.ones(p-2),np.ones(p-3),np.ones(p-4)])
-                offset = [-4,-3,-2,-1,0,1,2,3,4]
-                kern = np.ones((p,p)) - np.identity(p) + diags(k,offset).toarray()
-            else:
-                raise err.InvalidArgumentValueException(f"Convolution type not understood: {convolution_type}.")
+            k = np.array([np.ones(p-i) for i in np.abs(range(-bands_number, bands_number + 1))],dtype=object)
+            offset = [i for i in range(-bands_number, bands_number + 1)]
+            kern = diags(k,offset).toarray() - np.identity(p)
         kernels.append(kern)
     return kernels
 
@@ -191,7 +175,7 @@ def convolutionnal_cost(cropped_autosimilarity, kernels):
 def convolution_entire_matrix_computation(autosimilarity_array, kernels, kernel_size = 8):
     """
     Computes the convolution measure on the entire autosimilarity matrix, with a defined and fixed kernel size.
-
+    
     Parameters
     ----------
     autosimilarity_array : list of list of floats or numpy array (matrix representation)
@@ -236,23 +220,7 @@ def penalty_cost_from_arg(penalty_func, segment_length):
         The penalty cost.
 
     """
-    if penalty_func == "modulo4":
-        if segment_length %4 == 0:
-            return 0
-        elif segment_length %2 == 0:
-            return 1/2
-        else:
-            return 1
     if penalty_func == "modulo8":        
-        if segment_length == 8:
-            return 0
-        elif segment_length == 4:
-            return 1/4
-        elif segment_length %2 == 0:
-            return 1/2
-        else:
-            return 1
-    if penalty_func == "modulo8modulo4":        
         if segment_length == 8:
             return 0
         elif segment_length %4 == 0:
@@ -261,11 +229,27 @@ def penalty_cost_from_arg(penalty_func, segment_length):
             return 1/2
         else:
             return 1
-    if penalty_func == "sargentdemi": 
+    if penalty_func == "modulo4":
+        if segment_length %4 == 0:
+            return 0
+        elif segment_length %2 == 0:
+            return 1/2
+        else:
+            return 1
+    if penalty_func == "modulo8modulo4":        
+        if segment_length == 8:
+            return 0
+        elif segment_length == 4:
+            return 1/4
+        elif segment_length %2 == 0:
+            return 1/2
+        else:
+            return 1
+    if penalty_func == "target_deviation_8_alpha_half": 
          return abs(segment_length - 8) ** (1/2)
-    if penalty_func == "sargentun": 
+    if penalty_func == "target_deviation_8_alpha_one": 
          return abs(segment_length - 8)
-    if penalty_func == "sargentdeux": 
+    if penalty_func == "target_deviation_8_alpha_two": 
          return abs(segment_length - 8) ** 2
     else:
         raise err.InvalidArgumentValueException(f"Penalty function not understood {penalty_func}.")
@@ -301,3 +285,83 @@ def possible_segment_start(idx, min_size = 1, max_size = None):
         else:
             return []
 
+###################### Sandbox #######################
+def compute_all_kernels_oldway(max_size, convolution_type = "full"):
+    """
+    DEPRECATED but some ideas may be worth the shot.
+    
+    Precomputes all kernels of size 0 ([0]) to max_size, and feed them to the Dynamic Progamming algorithm.
+    
+    This is used for acceleration purposes.
+
+    Parameters
+    ----------
+    max_size : integer
+        The maximal size (included) for kernels.
+    convolution_type: string
+        The type of convolution. (to explicit)
+        Possibilities are :
+            - "full" : squared matrix entirely composed of one, except on the diagonal where it's zero.
+            The associated convolution cost for a segment (b_1, b_2) will be
+            .. math::
+                c_{b_1,b_2} = \\frac{1}{b_2 - b_1 + 1}\\sum_{i,j = 0, i \\ne j}^{n - 1}  a_{i + b_1, j + b_1}
+            - "4_bands" : squared matrix where the only nonzero values are ones on the 
+            4 upper- and 4 sub-diagonals surrounding the main diagonal.
+            The associated convolution cost for a segment (b_1, b_2) will be
+            .. math::
+                c_{b_1,b_2} = \\frac{1}{b_2 - b_1 + 1}\\sum_{i,j = 0, 1 \\leq |i - j| \\leq 4}^{n - 1}  a_{i + b_1, j + b_1}
+            - "mixed" : sum of both previous kernels, i.e. values are zero on the diagonal,
+            2 on the 4 upper- and 4 sub-diagonals surrounding the main diagonal, and 1 elsewhere.
+            The associated convolution cost for a segment (b_1, b_2) will be
+            .. math::
+                c_{b_1,b_2} = \\frac{1}{b_2 - b_1 + 1}(2*\\sum_{i,j = 0, 1 \\leq |i - j| \\leq 4}^{n - 1}  a_{i + b_1, j + b_1} \\ + \sum_{i,j = 0, |i - j| > 4}^{n - 1}  a_{i + b_1, j + b_1})
+        
+    Returns
+    -------
+    kernels : array of arrays (which are kernels)
+        All the kernels, of size 0 ([0]) to max_size.
+
+    """
+    kernels = [[0]]
+    for p in range(1,max_size + 1):
+        if p < 4:
+            kern = np.ones((p,p)) - np.identity(p)
+        # elif convolution_type == "7_bands" or convolution_type == "mixed_7_bands":
+        #     if p < 8:
+        #         kern = np.ones((p,p)) - np.identity(p)
+        #     else:
+        #         # Diagonal where only the six subdiagonals surrounding the main diagonal is one
+        #         k = np.array([np.ones(p-7),np.ones(p-6),np.ones(p-5),np.ones(p-4),np.ones(p-3),np.ones(p-2),np.ones(p-1),np.zeros(p),np.ones(p-1),np.ones(p-2),np.ones(p-3),np.ones(p-4),np.ones(p-5),np.ones(p-6),np.ones(p-7)], dtype=object)
+        #         offset = [-7,-6,-5,-4,-3,-2,-1,0,1,2,3, 4, 5, 6, 7]
+        #         if convolution_type == "14_bands":
+        #             kern = diags(k,offset).toarray()
+        #         else:
+        #             kern = np.ones((p,p)) - np.identity(p) + diags(k,offset).toarray()
+        else:
+            if convolution_type == "full":
+                # Full kernel (except for the diagonal)
+                kern = np.ones((p,p)) - np.identity(p)
+            elif convolution_type == "4_bands":
+                # Diagonal where only the eight subdiagonals surrounding the main diagonal is one
+                k = np.array([np.ones(p-4),np.ones(p-3),np.ones(p-2),np.ones(p-1),np.zeros(p),np.ones(p-1),np.ones(p-2),np.ones(p-3),np.ones(p-4)],dtype=object)
+                offset = [-4,-3,-2,-1,0,1,2,3,4]
+                kern = diags(k,offset).toarray()
+            elif convolution_type == "mixed":
+                # Sum of both previous kernels
+                k = np.array([np.ones(p-4),np.ones(p-3),np.ones(p-2),np.ones(p-1),np.zeros(p),np.ones(p-1),np.ones(p-2),np.ones(p-3),np.ones(p-4)],dtype=object)
+                offset = [-4,-3,-2,-1,0,1,2,3,4]
+                kern = np.ones((p,p)) - np.identity(p) + diags(k,offset).toarray()
+            elif convolution_type == "3_bands":
+                # Diagonal where only the six subdiagonals surrounding the main diagonal is one
+                k = np.array([np.ones(p-3),np.ones(p-2),np.ones(p-1),np.zeros(p),np.ones(p-1),np.ones(p-2),np.ones(p-3)],dtype=object)
+                offset = [-3,-2,-1,0,1,2,3]
+                kern = diags(k,offset).toarray()
+            elif convolution_type == "mixed_3_bands":
+                # Sum of both previous kernels
+                k = np.array([np.ones(p-3),np.ones(p-2),np.ones(p-1),np.zeros(p),np.ones(p-1),np.ones(p-2),np.ones(p-3)],dtype=object)
+                offset = [-3,-2,-1,0,1,2,3]
+                kern = np.ones((p,p)) - np.identity(p) + diags(k,offset).toarray()
+            else:
+                raise err.InvalidArgumentValueException(f"Convolution type not understood: {convolution_type}.")
+        kernels.append(kern)
+    return kernels

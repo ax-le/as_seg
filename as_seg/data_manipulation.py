@@ -1,11 +1,14 @@
 # -*- coding: utf-8 -*-
+"""
+Created on Fri Feb 21 15:09:10 2020
 
-# Created on Fri Feb 21 15:09:10 2020
+@author: amarmore
 
-# @author: amarmore
+A file which contains all code regarding conversion of data, or information extraction from it
+(typically getting the bars, converting segments in frontiers, sonifying segmentation or computing its Hit-Rate score, etc).
+"""
 
-# A file which contains all code regarding conversion of data, or extracting information from it
-# (typically getting the bars, converting segments in frontiers, sonifying segmentation or computing its score).
+import as_seg.model.errors as err
 
 import numpy as np
 import madmom.features.downbeats as dbt
@@ -13,22 +16,25 @@ import soundfile as sf
 import mir_eval
 import scipy
 
-import as_seg.model.errors as err
-
 # %% Read and treat inputs
-def get_bars_from_audio(song):
+def get_bars_from_audio(song_path):
     """
     Returns the bars of a song, directly from its audio signal.
     Encapsulates the downbeat estimator from the madmom toolbox [1].
+    
+    NB1: Note that the estimation implicitely assumes 3 or 4 beats per bar.
+    
+    NB2: Note also that this function artificially adds bars at the end of the song, so that the estimation spans the entire song length.
+    May/should be debated.
 
     Parameters
     ----------
-    song : String
+    song_path : String
         Path to the desired song.
 
     Returns
     -------
-    downbeats_times : list of tuple of float
+    downbeats_times : list of tuples of float
         List of the estimated bars, as (start, end) times.
         
     References
@@ -38,20 +44,25 @@ def get_bars_from_audio(song):
     In Proceedings of the 24th ACM international conference on Multimedia (pp. 1174-1178).
 
     """
-    act = dbt.RNNDownBeatProcessor()(song)
-    proc = dbt.DBNDownBeatTrackingProcessor(beats_per_bar=4, fps=100)
+    act = dbt.RNNDownBeatProcessor()(song_path)
+    proc = dbt.DBNDownBeatTrackingProcessor(beats_per_bar=[3,4], fps=100)
     song_beats = proc(act)
     downbeats_times = []
-    if song_beats[0][1] != 1:
+    
+    if song_beats[0][1] != 1: # Adding a first downbeat at the start of the song
         downbeats_times.append(0.1)
     for beat in song_beats:
-        if beat[1] == 1:
+        if beat[1] == 1: # If the beat is a downbeat
             downbeats_times.append(beat[0])
-    mean_bar = np.mean([downbeats_times[i + 1] - downbeats_times[i] for i in range(len(downbeats_times) - 1)])
-    signal_length = act.shape[0]/100
-    while downbeats_times[-1] + 1.1*mean_bar < signal_length:
-        downbeats_times.append(round(downbeats_times[-1] + mean_bar, 2))
-    downbeats_times.append(signal_length)
+            
+    # The following block of code artificially adds bars to the end of the song, in order to span the total song length.
+    # It seems like a good idea initially but may be detrimental, and should be debated anyway.
+    average_bar_length = np.mean([downbeats_times[i + 1] - downbeats_times[i] for i in range(len(downbeats_times) - 1)]) # average bar length in the song
+    song_length = act.shape[0]/100 # Total length of the song
+    while downbeats_times[-1] + 1.1*average_bar_length < song_length: # As long as the bar estimation does not cover the entire song
+        downbeats_times.append(round(downbeats_times[-1] + average_bar_length, 2)) # artifically adds bars of the length of the average bar length in the song
+    downbeats_times.append(song_length) # adding the last downbeat
+    
     return frontiers_to_segments(downbeats_times)
 
 def get_segmentation_from_txt(path, annotations_type):
@@ -69,7 +80,7 @@ def get_segmentation_from_txt(path, annotations_type):
         
     Raises
     ------
-    NotImplementedError
+    err.InvalidArgumentValueException
         If the type of annotations is neither AIST or MIREX10
 
     Returns
@@ -186,10 +197,31 @@ def segments_from_time_to_frame_idx(segments, hop_length_seconds):
         if bar_in_frames[0] != bar_in_frames[1]:
             to_return.append(bar_in_frames)
     return to_return
+    
+def segments_from_time_to_bar(segments, bars):
+    """
+    Converts the segments in time to segments in bar indexes.
+    The selected bar is the one which end is the closest from the frontier.
+
+    Parameters
+    ----------
+    segments : list of tuples
+        The list of segments, in time.
+    bars : list of tuple of floats
+        The bars, as (start time, end time) tuples.
+
+    Returns
+    -------
+    list of tuples of integers
+        List of time instances (start, end) converted in bar indexes.
+
+    """
+    frontiers = segments_to_frontiers(segments)
+    return np.array(frontiers_to_segments(frontiers_from_time_to_bar(frontiers, bars)))
 
 def frontiers_from_time_to_bar(seq, bars):
     """
-    Convert the frontiers in time to a bar index.
+    Converts the frontiers in time to a bar index.
     The selected bar is the one which end is the closest from the frontier.
 
     Parameters
@@ -286,10 +318,12 @@ def frontiers_to_segments(frontiers):
 
     """
     to_return = []
-    if frontiers[0] != 0:
-        to_return.append((0,frontiers[0]))
+    while 0 in frontiers:
+        frontiers.remove(0)
+    to_return.append((0,frontiers[0]))
     for idx in range(len(frontiers) - 1):
-        to_return.append((frontiers[idx], frontiers[idx + 1]))
+        if frontiers[idx] != frontiers[idx + 1]:
+            to_return.append((frontiers[idx], frontiers[idx + 1]))
     return to_return
 
 def segments_to_frontiers(segments):

@@ -36,5 +36,5 @@ setuptools.setup(
         'soundfile',
         'tensorly >= 0.5.1'
     ],
-    python_requires='>=3.8.*',
+    python_requires='>=3.7.*',
 )

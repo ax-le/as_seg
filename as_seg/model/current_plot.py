@@ -3,13 +3,40 @@
 Created on Fri Feb 22 16:29:17 2019
 
 @author: amarmore
-"""
 
-# Defining current plotting functions.
+Defining common plotting functions.
+
+NB: This module's name actually comes from an incorrect translation
+from the french "courant" into "current", instead of "common".
+Please excuse me for this translation.
+"""
 
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
+
+def plot_lenghts_hist(lengths):
+    """
+    Plots the lengths of segments in an histogram
+    i.e. the distribution of the size of segments in the annotation/estimation 
+    (allegedly already computed into a list lengths).
+ 
+    Parameters
+    ----------
+    lengths : list of integers
+        List of all segments' sizes in the annotation/estimation.
+    """
+    plt.rcParams.update({'font.size': 18})
+
+    fig, axs = plt.subplots(1, 1, figsize=(6, 3.75))
+    axs.hist(lengths, bins = range(1,34), density = True, cumulative = False, align = "left")
+    plt.xticks(np.concatenate([[1],range(4, 34, 4)]))
+    plt.ylim(0,1)
+
+    axs.set_xlabel("Size of the segment,\nin number of bars")
+    axs.set_ylabel("Proportion among\nall segments")
+
+    plt.show()
 
 def plot_me_this_spectrogram(spec, title = "Spectrogram", x_axis = "x_axis", y_axis = "y_axis", invert_y_axis = True, cmap = cm.Greys, figsize = None, norm = None, vmin = None, vmax = None):
     """

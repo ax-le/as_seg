@@ -3,20 +3,22 @@
 Created on Mon Mar 14 16:30:31 2022
 
 @author: amarmore
+
+Module used to compute autosimilarity matrices.
 """
+import as_seg.model.errors as err
 
 import numpy as np
-import as_seg.model.errors as err
 import sklearn.metrics.pairwise as pairwise_distances
 import warnings
 
 def switch_autosimilarity(an_array, similarity_type, gamma = None, normalise = True):
     """
-    High-level function to find the autosimilarity of this matrix.
+    High-level function to compute the autosimilarity of this matrix.
     
-    Expects a matrix of shape (Bars, Time-Frequency).
+    Expects a matrix of shape (Bars, Feature representation).
     
-    Computes it with different possible similarity function:
+    Computes it with different possible similarity function s_{x_i,x_j} (given two bars denoted as x_i and x_j):
         - "cosine" for the cosine similarity, i.e. the normalised dot product:
         .. math::
             s_{x_i,x_j} = \\frac{\langle x_i, x_j \rangle}{||x_i|| ||x_j||}
@@ -35,11 +37,11 @@ def switch_autosimilarity(an_array, similarity_type, gamma = None, normalise = T
     Parameters
     ----------
     an_array : numpy array
-        The array/matrix seen as array which autosimilarity os to compute.
-        Expected to be of shape (Bars, Time-Frequency).
+        The array/matrix seen as array which autosimilarity will be computed.
+        Expected to be of shape (Bars, Feature representation).
     similarity_type : string
         Either "cosine", "covariance" or "rbf".
-        It represents the type of similarity to compute between features.
+        It represents the similarity function used for computing the autosimilarity.
     gamma : positive float, optional
         The gamma parameter in the rbf function, only used for the "rbf" similarity.
         The default is None, meaning that it is computed as function of the standard deviation,
@@ -55,11 +57,11 @@ def switch_autosimilarity(an_array, similarity_type, gamma = None, normalise = T
         Autosimilarity matrix of the input an_array.
 
     """
-    if similarity_type == "cosine":
+    if similarity_type.lower() == "cosine":
         return get_cosine_autosimilarity(an_array)#, normalise = normalise)
-    elif similarity_type == "covariance":
+    elif similarity_type.lower() == "covariance":
         return get_covariance_autosimilarity(an_array, normalise = normalise)
-    elif similarity_type == "rbf":
+    elif similarity_type.lower() == "rbf":
         return get_rbf_autosimilarity(an_array, gamma, normalise = normalise)
     else:
         raise err.InvalidArgumentValueException(f"Incorrect similarity type: {similarity_type}. Should be cosine, covariance or rbf.")
@@ -67,6 +69,8 @@ def switch_autosimilarity(an_array, similarity_type, gamma = None, normalise = T
 def l2_normalise_barwise(an_array):
     """
     Normalises the array barwise (i.e., in its first dimension) by the l_2 norm.
+    
+    Null values are replaced by the small positive value of 10^{-10}.
 
     Parameters
     ----------
@@ -82,14 +86,14 @@ def l2_normalise_barwise(an_array):
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", message="invalid value encountered in true_divide") # Avoiding to show the warning, as it's handled, not te confuse the user.
         an_array_T = an_array.T/np.linalg.norm(an_array, axis = 1)
-        an_array_T = np.where(np.isnan(an_array_T), 1e-10, an_array_T) # Replace null lines, avoiding best-path retrieval to fail
+        an_array_T = np.where(np.isnan(an_array_T), 1e-10, an_array_T) # Replace null lines, avoiding future errors in handling values.
     return an_array_T.T
 
 def get_cosine_autosimilarity(an_array):#, normalise = True):
     """
-    Computes the autosimilarity matrix, where the similarity function is the cosine.
+    Computes the autosimilarity matrix with the cosine similarity function.
     
-    The cosine similarity function is the normalised dot product, i.e.:
+    The cosine similarity function is the normalised dot product between two bars, i.e.:
     .. math::
         s_{x_i,x_j} = \\frac{\langle x_i, x_j \rangle}{||x_i|| ||x_j||}
     
@@ -97,7 +101,7 @@ def get_cosine_autosimilarity(an_array):#, normalise = True):
     ----------
     an_array : numpy array
         The array/matrix seen as array which autosimilarity os to compute.
-        Expected to be of shape (Bars, Time-Frequency).
+        Expected to be of shape (Bars, Feature representation).
 
     Returns
     -------
@@ -124,7 +128,7 @@ def get_covariance_autosimilarity(an_array, normalise = True):
     Parameters
     ----------
     an_array : numpy array
-        The array/matrix seen as array which autosimilarity os to compute.
+        The array/matrix seen as array which autosimilarity will be computed.
     normalise : boolean, optional
         Whether features should be normalised or not. 
         Normalisation here means that each centered feature is normalised by its norm.
@@ -140,7 +144,7 @@ def get_covariance_autosimilarity(an_array, normalise = True):
         this_array = np.array(an_array)
     else:
         this_array = an_array
-    this_array = this_array - this_array.mean(axis=0)
+    this_array = this_array - this_array.mean(axis=0) # centering, i.e. subtracting the average value row-wise
     if normalise:
         this_array = l2_normalise_barwise(this_array)
     return this_array@this_array.T
@@ -154,11 +158,12 @@ def get_rbf_autosimilarity(an_array, gamma = None, normalise = True):
         s_{x_i,x_j} = \\exp^{-\\gamma ||x_i - x_j||_2}
         
     The RBF is computed via scikit-learn.
+    The default gamma value is computed in function get_gamma_std(), refer to that function for further details.
 
     Parameters
     ----------
     an_array : numpy array
-        The array/matrix seen as array which autosimilarity os to compute.
+        The array/matrix seen as array which autosimilarity will be computed.
     gamma : positive float, optional
         The gamma parameter in the rbf function.
         The default is None, meaning that it is computed as function of the standard deviation,
@@ -184,37 +189,40 @@ def get_rbf_autosimilarity(an_array, gamma = None, normalise = True):
         this_array = l2_normalise_barwise(this_array)
     return pairwise_distances.rbf_kernel(this_array, gamma = gamma)
 
-def get_gamma_std(barwise_TF, scaling_factor = 1, no_diag = True, normalise = True):
+def get_gamma_std(an_array, scaling_factor = 1, no_diag = True, normalise = True):
     """
-    Default value for the gamm in the RBF similarity function.
+    Default value for the gamma in the RBF similarity function.
     
-    This default value is a function of the standard deviation of the values, more experiments should be made, so TODO.
+    This default value is proportional to the inverse of the standard deviation of the values, more experiments should be made to fit it.
+    For now, it has been set quite empirically.
 
     Parameters
     ----------
-    barwise_TF : TYPE
-        DESCRIPTION.
-    scaling_factor : TYPE, optional
-        DESCRIPTION. The default is 1.
-    no_diag : TYPE, optional
-        DESCRIPTION. The default is True.
-    normalise : TYPE, optional
-        DESCRIPTION. The default is True.
+    an_array : numpy array
+        The array/matrix seen as array which autosimilarity will be computed.
+    scaling_factor : positive float, optional
+        Weigthing parameter, relating to the inverse of the standard deviation. 
+        The default is 1.
+    no_diag : boolen, optional
+        Whether the diagonal values (self similarity values) should be discarded (True) or taken into account (False). 
+        The default is True.
+    normalise : boolean, optional
+        Whether features should be normalised or not. 
+        Normalisation here means that the euclidean norm is computed between normalised vectors.
+        The default is True.
 
     Returns
     -------
-    TYPE
-        DESCRIPTION.
+    gamma : float
+        The gamma parameter in the RBF similarity function.
 
     """
     if normalise:
-        barwise_TF = l2_normalise_barwise(barwise_TF)
-    euc_dist = pairwise_distances.euclidean_distances(barwise_TF)
+        an_array = l2_normalise_barwise(an_array)
+    euc_dist = pairwise_distances.euclidean_distances(an_array)
     if not no_diag:
-        #return scaling_factor/(np.std(euc_dist)*barwise_TF.shape[0])
         return scaling_factor/(2*np.std(euc_dist))
     else:
         for i in range(len(euc_dist)):
             euc_dist[i,i] = float('NaN')
-        #return scaling_factor/(np.nanstd(euc_dist)*barwise_TF.shape[0])
         return scaling_factor/(2*np.nanstd(euc_dist))
