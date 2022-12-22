@@ -15,29 +15,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 
-def plot_lenghts_hist(lengths):
-    """
-    Plots the lengths of segments in an histogram
-    i.e. the distribution of the size of segments in the annotation/estimation 
-    (allegedly already computed into a list lengths).
- 
-    Parameters
-    ----------
-    lengths : list of integers
-        List of all segments' sizes in the annotation/estimation.
-    """
-    plt.rcParams.update({'font.size': 18})
-
-    fig, axs = plt.subplots(1, 1, figsize=(6, 3.75))
-    axs.hist(lengths, bins = range(1,34), density = True, cumulative = False, align = "left")
-    plt.xticks(np.concatenate([[1],range(4, 34, 4)]))
-    plt.ylim(0,1)
-
-    axs.set_xlabel("Size of the segment,\nin number of bars")
-    axs.set_ylabel("Proportion among\nall segments")
-
-    plt.show()
-
+# %% Plotting utils
 def plot_me_this_spectrogram(spec, title = "Spectrogram", x_axis = "x_axis", y_axis = "y_axis", invert_y_axis = True, cmap = cm.Greys, figsize = None, norm = None, vmin = None, vmax = None):
     """
     Plots a spectrogram in a colormesh.
@@ -66,36 +44,30 @@ def pad_factor(factor):
         for j in range(factor.shape[1]):
             padded[i,j] = factor[i,j]
     return np.array(padded)
-    
-def compare_both_annotated(spec_1, spec_2, ends_1, ends_2, annotations, title_1 = "First", title_2 = "Second"):
+
+def plot_lenghts_hist(lengths):
     """
-    Compare two Q matrices, with the annotation of the segmentation.
-    Given two different Q, it will plot Q^T and Q.Q^T (autosimilairty of Q^T).
+    Plots the lengths of segments in an histogram
+    i.e. the distribution of the size of segments in the annotation/estimation 
+    (allegedly already computed into a list lengths).
+ 
+    Parameters
+    ----------
+    lengths : list of integers
+        List of all segments' sizes in the annotation/estimation.
     """
-    fig, axs = plt.subplots(1, 2, figsize=(20,10))
-    padded_spec_1 = pad_factor(spec_1)
-    axs[0].pcolormesh(np.arange(padded_spec_1.shape[0]), np.arange(padded_spec_1.shape[0]), padded_spec_1)
-    axs[0].set_title('Autosimilarity of ' + title_1)
-    padded_spec_2 = pad_factor(spec_2)
-    axs[1].pcolormesh(np.arange(padded_spec_2.shape[0]), np.arange(padded_spec_2.shape[0]), padded_spec_2)
-    axs[1].set_title('Autosimilarity of ' + title_2)
-    axs[0].invert_yaxis()
-    axs[1].invert_yaxis()    
-    for x in annotations:
-        axs[0].plot([x,x], [0,len(spec_1) - 1], '-', linewidth=1, color = "red")
-        axs[1].plot([x,x], [0,len(spec_2) - 1], '-', linewidth=1, color = "red")
-    for x in ends_1:
-        if x in annotations:
-            axs[0].plot([x,x], [0,len(spec_1)], '-', linewidth=1, color = "#8080FF")#"#17becf")
-        else:
-            axs[0].plot([x,x], [0,len(spec_1)], '-', linewidth=1, color = "orange")
-    for x in ends_2:
-        if x in annotations:
-            axs[1].plot([x,x], [0,len(spec_2)], '-', linewidth=1, color = "#8080FF")#"#17becf")
-        else:
-            axs[1].plot([x,x], [0,len(spec_2)], '-', linewidth=1, color = "orange")
+    plt.rcParams.update({'font.size': 18})
+
+    fig, axs = plt.subplots(1, 1, figsize=(6, 3.75))
+    axs.hist(lengths, bins = range(1,34), density = True, cumulative = False, align = "left")
+    plt.xticks(np.concatenate([[1],range(4, 34, 4)]))
+    plt.ylim(0,1)
+
+    axs.set_xlabel("Size of the segment,\nin number of bars")
+    axs.set_ylabel("Proportion among\nall segments")
+
     plt.show()
-    
+
 def plot_measure_with_annotations(measure, annotations, color = "red"):
     """
     Plots the measure (typically novelty) with the segmentation annotation.
@@ -180,4 +152,3 @@ def plot_segments_with_annotations(seg, annot):
         plt.plot([x[1], x[1]], [0,np.amax(np.array(seg)[:,2])/10], '-', linewidth=1, color = "red")
     plt.show()
     
-  

@@ -8,7 +8,6 @@ A module containing some high-level scripts for decomposition and/or segmentatio
 Not meant to be shared but rather to work.
 """
 
-
 import soundfile as sf
 import librosa.core
 import librosa.feature
@@ -307,62 +306,3 @@ def load_or_save_spectrogram_and_bars(persisted_path, song_path, feature, hop_le
     bars = load_or_save_bars(persisted_path, song_path)
     spectrogram = load_or_save_spectrogram(persisted_path, song_path, feature, hop_length, fmin = fmin, n_fft = n_fft, n_mfcc = n_mfcc)
     return bars, spectrogram
-
-def load_or_save_tensor_spectrogram(persisted_path, song_path, feature, hop_length, subdivision_bars, fmin = 98, n_fft = 2048, n_mfcc = 20):
-    """
-    Loads the tensor_pectrogram for this song, which was persisted after a first computation, or compute it if it wasn't found.
-
-    You should prefer load_or_save_spectrogram, as it allows more possibility about tensor folding, except if you're short in space on your disk.
-
-    Parameters
-    ----------
-    persisted_path : string
-        Path where the bars and the spectrogram should be found.
-    song_path : string
-        The path of the signal of the song.
-    feature : string
-        Feature of the spectrogram, part of the identifier of the spectrogram.
-    hop_length : integer
-        hop_length of the spectrogram, part of the identifier of the spectrogram.
-    fmin : integer
-        Minimal frequence for the spectrogram, part of the identifier of the spectrogram.
-        The default is 98.
-    n_fft and n_mfcc : integers, optional
-        Both arguments are used respectively for the stft and for the mfcc computation, and are used to 
-
-    Returns
-    -------
-    numpy array
-        The tensor spectrogram of this song.
-
-    """
-    song_name = song_path.split("/")[-1].replace(".wav","").replace(".mp3","")
-    try:
-        tensor_barwise = np.load(f"{persisted_path}/tensor_barwise_ae/{song_name}_{feature}_hop{hop_length}_subdiv{subdivision_bars}.npy", allow_pickle = True)
-        return tensor_barwise
-    except FileNotFoundError:
-        # raise NotImplementedError("YOlo")
-        the_signal, original_sampling_rate = librosa.load(song_path, sr=44100) #sf.read(song_path)
-        if original_sampling_rate != 44100:
-            the_signal = librosa.core.resample(np.asfortranarray(the_signal), original_sampling_rate, 44100)
-        if "stft" in feature and "nfft" in feature:
-            if "nfft" not in feature: 
-                spectrogram = features.get_spectrogram(the_signal, 44100, "stft", hop_length, n_fft = n_fft)
-            else:              
-                n_fft_arg = int(feature.split("nfft")[1])
-                spectrogram = features.get_spectrogram(the_signal, 44100, "stft", hop_length, n_fft = n_fft_arg)
-        elif "mfcc" in feature:
-            if "nmfcc" not in feature:
-                spectrogram = features.get_spectrogram(the_signal, 44100, "mfcc", hop_length, n_mfcc = n_mfcc)
-            else:
-                n_mfcc_arg = int(feature.split("nmfcc")[1])
-                spectrogram = features.get_spectrogram(the_signal, 44100, "mfcc", hop_length, n_mfcc = n_mfcc_arg)
-        else:
-            spectrogram = features.get_spectrogram(the_signal, 44100, feature, hop_length, fmin = fmin)
-            
-        hop_length_seconds = hop_length/44100
-        bars = load_or_save_bars(persisted_path, song_path)
-        tensor_spectrogram = bi.tensorize_barwise_BFT(spectrogram, bars, hop_length_seconds, subdivision_bars)
-        np.save(f"{persisted_path}/tensor_barwise_ae/{song_name}_{feature}_hop{hop_length}_subdiv{subdivision_bars}", tensor_spectrogram)
-        return tensor_spectrogram
-    

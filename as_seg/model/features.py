@@ -285,4 +285,3 @@ def get_audio_from_spectrogram(spectrogram, feature, hop_length, sr):
         return get_audio_from_spectrogram(mel, "mel_grill", hop_length, sr)
     else:
         raise err.InvalidArgumentValueException("Unknown feature representation, can't reconstruct a signal.")
-    
