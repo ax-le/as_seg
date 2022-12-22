@@ -285,7 +285,87 @@ def possible_segment_start(idx, min_size = 1, max_size = None):
         else:
             return []
 
-###################### Sandbox #######################
+# %% Sandbox
+def dynamic_convolution_computation_test_line(autosimilarity, line_conv_weight = 1, min_size = 2, max_size = 36, novelty_kernel_size = 16, penalty_weight = 1, penalty_func = "modulo8", convolution_type = "eight_bands"):
+    """
+    Segmentation algo with inline convolution test, doesn't work that much in practice.
+    """
+    costs = [-math.inf for i in range(len(autosimilarity))]
+    segments_best_starts = [None for i in range(len(autosimilarity))]
+    segments_best_starts[0] = 0
+    costs[0] = 0
+
+    kernels = compute_all_kernels(max_size, convolution_type = convolution_type)
+    full_kernels = compute_full_kernels(max_size, convolution_type = convolution_type)
+    #novelty = novelty_computation(autosimilarity, novelty_kernel_size)
+    conv_eight = convolution_entire_matrix_computation(autosimilarity, kernels)
+    
+    for current_idx in range(1, len(autosimilarity)): # Parse all indexes of the autosimilarity
+        for possible_start_idx in possible_segment_start(current_idx, min_size = min_size, max_size = max_size):
+            if possible_start_idx < 0:
+                raise err.ToDebugException("Invalid value of start index.")
+                
+            # Convolutionnal cost between the possible start of the segment and the current index (entire segment)
+            conv_cost = convolutionnal_cost(autosimilarity[possible_start_idx:current_idx,possible_start_idx:current_idx], kernels)
+
+            # Novelty cost, computed with a fixed kernel (doesn't make sense otherwise), on the end of the segment
+            #nov_cost = novelty[current_idx]
+            
+            segment_length = current_idx - possible_start_idx
+            penalty_cost = penalty_cost_from_arg(penalty_func, segment_length)            
+            
+            current_line_conv_max = 0
+            # if possible_start_idx >= segment_length:
+            #     for before_start in range(0, possible_start_idx - segment_length + 1):
+            #         line_conv_cost = convolutionnal_cost(autosimilarity[possible_start_idx:current_idx,before_start:before_start + segment_length], full_kernels)
+            #         if line_conv_cost > current_line_conv_max:
+            #             current_line_conv_max = line_conv_cost
+            
+            # if current_idx + segment_length < len(autosimilarity):
+            #     for after_start in range(current_idx, len(autosimilarity) - segment_length):
+            #         line_conv_cost = convolutionnal_cost(autosimilarity[possible_start_idx:current_idx,after_start:after_start + segment_length], full_kernels)
+            #         if line_conv_cost > current_line_conv_max:
+            #             current_line_conv_max = line_conv_cost
+            
+            mat_vec = []
+            if possible_start_idx >= segment_length:
+                for before_start in range(0, possible_start_idx - segment_length + 1):
+                    mat_vec.append(autosimilarity[possible_start_idx:current_idx,before_start:before_start + segment_length].flatten())
+
+            if current_idx + segment_length < len(autosimilarity):
+                for after_start in range(current_idx, len(autosimilarity) - segment_length):
+                    mat_vec.append(autosimilarity[possible_start_idx:current_idx,after_start:after_start + segment_length].flatten())
+
+            if mat_vec == []:
+                current_line_conv_max = 0
+            else:
+                kern = full_kernels[segment_length]
+                convs_on_line = np.matmul(kern.reshape(1,segment_length**2), np.array(mat_vec).T)                
+                current_line_conv_max = np.amax(convs_on_line) / segment_length**2
+            
+            this_segment_cost = (conv_cost + line_conv_weight * current_line_conv_max) * segment_length - penalty_cost * penalty_weight * np.max(conv_eight)
+            # Note: the length of the segment does not appear in conv_eight (not a problem in itself as size is contant, but generally not specified in formulas).
+
+            # Avoiding errors, as segment_cost are initially set to -inf.
+            if possible_start_idx == 0:
+                if this_segment_cost > costs[current_idx]:
+                    costs[current_idx] = this_segment_cost
+                    segments_best_starts[current_idx] = 0
+            else:
+                if costs[possible_start_idx] + this_segment_cost > costs[current_idx]:
+                    costs[current_idx] = costs[possible_start_idx] + this_segment_cost
+                    segments_best_starts[current_idx] = possible_start_idx
+
+    segments = [(segments_best_starts[len(autosimilarity) - 1], len(autosimilarity) - 1)]
+    precedent_frontier = segments_best_starts[len(autosimilarity) - 1] # Because a segment's start is the previous one's end.
+    while precedent_frontier > 0:
+        segments.append((segments_best_starts[precedent_frontier], precedent_frontier))
+        precedent_frontier = segments_best_starts[precedent_frontier]
+        if precedent_frontier == None:
+            raise err.ToDebugException("Well... Viterbi took an impossible path, so it failed. Understand why.") from None
+    return segments[::-1], costs[-1]
+
+
 def compute_all_kernels_oldway(max_size, convolution_type = "full"):
     """
     DEPRECATED but some ideas may be worth the shot.
