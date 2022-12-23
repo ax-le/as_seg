@@ -30,7 +30,7 @@ import tensorly as tl
 
 # %% Tensors barwise spectrograms construction
 # !!! Be extremely careful with the organization of modes, which can be either Frequency-Time at barscale-Bars (FTB) or Bars-Frequency-Time at barscale (BFT) depending on the method.
-def tensorize_barwise_FTB(spectrogram, bars, hop_length_seconds, subdivisio):
+def tensorize_barwise_FTB(spectrogram, bars, hop_length_seconds, subdivision):
     """
     Returns a 3rd order tensor-spectrogram from the original spectrogram and bars starts and ends.
     The order of modes is Frequency-Time at barscale-Bars (FTB).
