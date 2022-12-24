@@ -6,13 +6,13 @@ This project aims at computing autosimilarity matrices, and segmenting them, whi
 
 The current version contains the CBM algorithm [1], along with a (low-effort) implementation of Foote's novelty algorithm [2].
 
-It can be installed with pip usin `pip install as-seg`.
+It can be installed using pip as `pip install as-seg`.
 
 This is a first release, and may contain bug. Comments are welcomed!
 
 ## Tutorial notebook ##
 
-A tutorial notebook presenting the most important components of this toolbox is available in the folder "Notebooks" (called "Walkthrough").
+A tutorial notebook presenting the most important components of this toolbox is available in the folder "Notebooks".
 
 ## Software version ##
 
