@@ -14,6 +14,8 @@ This is a first release, and may contain bug. Comments are welcomed!
 
 A tutorial notebook presenting the most important components of this toolbox is available in the folder "Notebooks".
 
+It is only available if you downloaded the project from git (e.g. https://gitlab.inria.fr/amarmore/autosimilarity_segmentation), and is not available in the pip version (which is in general not accessible easily in the file tree).
+
 ## Software version ##
 
 This code was developed with Python 3.8.5, and some external libraries detailed in dependencies.txt. They should be installed automatically if this project is downloaded using pip.

@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="as_seg",
-    version="0.1.0",
+    version="0.1.2",
     author="Marmoret Axel",
     author_email="axel.marmoret@irisa.fr",
     description="Package for the segmentation of autosimilarity matrices.",
