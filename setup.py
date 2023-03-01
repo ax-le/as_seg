@@ -24,7 +24,7 @@ setuptools.setup(
     ],
     license='BSD',
     install_requires=[
-        'librosa >= 0.8.0',
+        'librosa >= 0.8.0,<0.9.0',
         'madmom >= 0.16.1',
         'matplotlib',
         'mir_eval >= 0.6',
